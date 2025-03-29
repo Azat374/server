@@ -1,0 +1,13 @@
+Flask
+flask-cors
+pymongo
+python-dotenv
+gunicorn
+requests
+google-generativeai
+cloudinary
+Flask-SQLAlchemy
+reportlab
+werkzeug
+PyJWT
+sympy
