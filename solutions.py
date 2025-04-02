@@ -4,8 +4,36 @@ from flask import Blueprint, request, jsonify
 from models import db, Task, Solution, Step
 from flask_cors import cross_origin
 from latex2sympy2 import latex2sympy  # Импортируем функцию для преобразования LaTeX в Sympy
-
+from typing import List
+import re
 solutions_bp = Blueprint('solutions', __name__, url_prefix='/api/solutions')
+
+def normalize_steps_with_limit(steps: List[str]) -> List[str]:
+    """
+    Обрабатывает список шагов, удаляет \\lim_{...} из LaTeX выражений и добавляет маркер LIMIT перед шагом,
+    в котором лимит больше не указан.
+    """
+    normalized = []
+    inserted_limit = False
+
+    lim_pattern = re.compile(r"\\lim_\{[^\}]+\}")
+
+    for i, step in enumerate(steps):
+        has_limit = bool(lim_pattern.search(step))
+
+        if has_limit:
+            # Удаляем саму конструкцию \lim_{x\to ...}
+            cleaned_step = lim_pattern.sub("", step).strip()
+            normalized.append(cleaned_step)
+        else:
+            if not inserted_limit:
+                normalized.append("LIMIT")
+                inserted_limit = True
+            normalized.append(step)
+
+    return normalized
+
+
 
 def safe_sympify(expr):
     """Безопасно преобразует LaTeX-выражение в формат sympy с обработкой ошибок,
@@ -65,24 +93,24 @@ def check_algebraic_step(prev_expr_str, curr_expr_str, tolerance=1e-10):
             "hint": f"Ошибка в выражении: {str(e)}"
         }
 
-def check_limit(expr_str, var_str="x", limit_point="oo"):
+def check_limit(expr_str, var_str, limit_point):
     """Вычисляет предел выражения."""
     try:
         # Преобразуем выражение и определяем переменную
         expr = safe_sympify(expr_str)
         var = sp.Symbol(var_str)
+        print(f"Предел для выражения: {expr}, переменная: {var}, точка предела: {limit_point}")
+
         
-        # Обрабатываем специальные точки предела
-        if limit_point in ["infinity", "∞"]:
-            limit_point = sp.oo
-        elif limit_point in ["-infinity", "-∞"]:
-            limit_point = -sp.oo
+
+        if limit_point == "oo" or limit_point == "∞" or limit_point == "infinity":
+            limit_result = sp.limit(expr, var, sp.oo)
+        elif limit_point == "-oo" or limit_point == "-∞" or limit_point == "-infinity":
+            limit_result = sp.limit(expr, var, -sp.oo)
         else:
-            limit_point = safe_sympify(limit_point)
-        
-        # Вычисляем предел
-        limit_result = sp.limit(expr, var, limit_point)
-        
+            limit_result = sp.limit(expr, var, limit_point)
+        print(expr, var, limit_point)
+
         return {
             "is_correct": True,
             "computed_limit": limit_result,
@@ -97,6 +125,21 @@ def check_limit(expr_str, var_str="x", limit_point="oo"):
             "error_type": "limit_error",
             "hint": f"Ошибка при вычислении предела: {str(e)}"
         }
+
+def compare_limit_values(student_result, expected_result):
+    """Сравнивает результат предела студента с вычисленным значением, обрабатывая особые случаи."""
+    try:
+        # Проверка на бесконечность
+        if (sp.oo == student_result and sp.oo == expected_result) or \
+           (-sp.oo == student_result and -sp.oo == expected_result):
+            return True
+            
+        # Проверка для обычных чисел
+        diff = sp.simplify(student_result - expected_result)
+        return diff.is_zero
+    except Exception:
+        # Если сравнение не удалось, проверяем текстовое представление
+        return str(student_result) == str(expected_result)
 
 @solutions_bp.route('/check', methods=['POST'])
 @cross_origin()
@@ -119,14 +162,15 @@ def check_solution():
         return jsonify({"error": "Invalid request format"}), 400
         
     task_id = data["taskId"]
-    steps = data["steps"]
+    steps_bad = data["steps"]
     
-    if not isinstance(steps, list) or len(steps) < 2:
+    if not isinstance(steps_bad, list) or len(steps_bad) < 2:
         return jsonify({
             "success": False,
             "errors": [{"step": 1, "error": "Решение должно состоять как минимум из двух шагов"}]
         }), 400
         
+    steps = normalize_steps_with_limit(steps_bad)
     # Получаем задачу из базы данных
     task = Task.query.get(task_id)
     if not task:
@@ -215,14 +259,22 @@ def check_solution():
             if limit_index < len(steps) - 1 and not errors:
                 student_answer = steps[-1]
                 try:
-                    student_result = sp.simplify(safe_sympify(student_answer))
-                    expected_result = sp.simplify(computed_limit)
+                    # Спецобработка ответов бесконечность
+                    if student_answer.strip() in ["\\infty", "\\infinity", "∞"]:
+                        student_result = sp.oo
+                    elif student_answer.strip() in ["-\\infty", "-\\infinity", "-∞"]:
+                        student_result = -sp.oo
+                    else:
+                        student_result = sp.simplify(safe_sympify(student_answer))
                     
-                    if not sp.simplify(student_result - expected_result).is_zero:
+                    expected_result = computed_limit
+                    
+                    # Используем улучшенное сравнение
+                    if not compare_limit_values(student_result, expected_result):
                         errors.append({
                             "step": len(steps),
                             "error": "Неверный окончательный ответ",
-                            "hint": f"Ваш ответ не совпадает с вычисленным пределом: {computed_limit}"
+                            "hint": f"Ваш ответ не совпадает с вычисленным пределом. Правильный ответ: {expected_result}"
                         })
                 except Exception as e:
                     errors.append({
