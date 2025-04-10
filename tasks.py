@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
-from models import db, Task
-
+from models import db, Task, Solution
+from datetime import datetime
 tasks_bp = Blueprint('tasks', __name__, url_prefix='/api/tasks')
 
 @tasks_bp.route('', methods=['GET'])
@@ -77,3 +77,21 @@ def delete_task(task_id):
     db.session.delete(task)
     db.session.commit()
     return jsonify({"message": "Task deleted successfully"}), 200
+
+@tasks_bp.route('/<int:task_id>/start', methods=['POST'])
+def start_solution(task_id):
+    """
+    Создает новое пустое решение (Solution) для указанной задачи.
+    Возвращает ID решения.
+    """
+    task = Task.query.get(task_id)
+    if not task:
+        return jsonify({"message": "Task not found"}), 404
+
+    # Предполагаем, что пользователь с ID = 1 (заглушка)
+    user_id = 1
+    new_solution = Solution(task_id=task_id, user_id=user_id, status="in_progress", created_at=datetime.utcnow())
+    db.session.add(new_solution)
+    db.session.commit()
+
+    return jsonify({"solution_id": new_solution.id}), 201
