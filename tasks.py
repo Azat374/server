@@ -33,7 +33,8 @@ def get_task(task_id):
         "description": task.description,
         "expression": task.expression,
         "limitVar": task.limitVar,
-        "expected_value": task.expected_value
+        "expected_value": task.expected_value,
+        "category": task.category
     }), 200
 
 @tasks_bp.route('', methods=['POST'])
@@ -49,7 +50,8 @@ def create_task():
         description=data.get('description', ''),
         expression=data['expression'],
         limitVar=data['limitVar'],
-        expected_value=data['expected_value']
+        expected_value=data['expected_value'],
+        category=data['category']  
     )
     db.session.add(new_task)
     db.session.commit()
@@ -66,6 +68,7 @@ def update_task(task_id):
     task.expression = data.get('expression', task.expression)
     task.limitVar = data.get('limitVar', task.limitVar)
     task.expected_value = data.get('expected_value', task.expected_value)
+    task.category = data.get('category', task.category)
     db.session.commit()
     return jsonify({"message": "Task updated successfully"}), 200
 
