@@ -1,7 +1,7 @@
 import logging
 import sympy as sp
 from flask import Blueprint, request, jsonify
-from models import db, Task, Solution, Step
+from models import db, Task, Solution, Step, User
 from flask_cors import cross_origin
 from latex2sympy2 import latex2sympy  # Преобразование LaTeX в Sympy
 from typing import List
@@ -206,7 +206,7 @@ def check_integral_solution():
                 "hint": integral_check["hint"]
             })
 
-    user_id = 1  # Заглушка для идентификатора пользователя
+    user_id = User.query.filter_by(username=data["user"]).first().id if User.query.filter_by(username=data["user"]).first() else 1
     solution = Solution(task_id=task.id, user_id=user_id, status="in_progress")
     db.session.add(solution)
     db.session.flush()  # Для получения solution.id без коммита

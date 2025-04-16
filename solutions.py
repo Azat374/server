@@ -4,7 +4,7 @@ import sympy as sp
 from flask import Blueprint, request, jsonify, send_file
 from flask_cors import cross_origin
 from latex2sympy2 import latex2sympy  # Преобразование LaTeX в sympy-выражения
-from models import db, Task, Solution, Step
+from models import db, Task, Solution, Step, User
 from typing import List
 
 solutions_bp = Blueprint('solutions', __name__, url_prefix='/api/solutions')
@@ -297,7 +297,7 @@ def check_solution():
             })
 
     # Сохраняем решение и шаги в базу
-    user_id = 1  # Заглушка для пользователя
+    user_id = User.query.filter_by(username=data["user"]).first().id if User.query.filter_by(username=data["user"]).first() else 1
     solution = Solution(task_id=task.id, user_id=user_id, status="in_progress")
     db.session.add(solution)
     db.session.flush()
@@ -373,8 +373,9 @@ def check_integral():
             "error": "Ошибка разбора",
             "hint": str(e)
         })
+    user_id = User.query.filter_by(username=data["user"]).first().id if User.query.filter_by(username=data["user"]).first() else 1
 
-    solution = Solution(task_id=task.id, user_id=1, status="completed" if not errors else "error")
+    solution = Solution(task_id=task.id, user_id=user_id, status="completed" if not errors else "error")
     db.session.add(solution)
     db.session.flush()
 
@@ -428,7 +429,8 @@ def check_algebra():
             "hint": str(e)
         })
 
-    solution = Solution(task_id=task.id, user_id=1, status="completed" if not errors else "error")
+    user_id = User.query.filter_by(username=data["user"]).first().id if User.query.filter_by(username=data["user"]).first() else 1
+    solution = Solution(task_id=task.id, user_id=user_id, status="completed" if not errors else "error")
     db.session.add(solution)
     db.session.flush()
 
